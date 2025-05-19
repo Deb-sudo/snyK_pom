@@ -1,0 +1,68 @@
+name: Snyk Vulnerability Scan
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  snyk-scan:
+    runs-on: ubuntu-latest
+    name: Scan with Snyk
+    permissions:
+      contents: read
+      security-events: write  # Required for SARIF upload
+    env:
+      SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Snyk CLI
+        run: |
+          curl -sL https://github.com/snyk/snyk/releases/latest/download/snyk-linux -o snyk
+          chmod +x snyk
+          sudo mv snyk /usr/local/bin/snyk
+
+      # ---- Scan package.json ----
+      - name: Snyk Test - Node.js
+        if: exists('package.json')
+        run: |
+          snyk test --file=package.json --severity-threshold=high
+
+      # ---- Scan pom.xml ----
+      - name: Snyk Test - Java (Maven)
+        if: exists('pom.xml')
+        run: |
+          snyk test --file=pom.xml --severity-threshold=high --all-projects
+
+      # ---- SARIF Report Generation ----
+      - name: Snyk Code to SARIF
+        run: |
+          snyk code test --sarif > snyk.sarif || true  # continue if scan finds issues
+
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: snyk.sarif
+
+      # ---- Push results to Snyk Dashboard ----
+      - name: Snyk Monitor - Node.js
+        if: exists('package.json')
+        run: snyk monitor --file=package.json
+
+      - name: Snyk Monitor - Java (Maven)
+        if: exists('pom.xml')
+        run: snyk monitor --file=pom.xml --all-projects
