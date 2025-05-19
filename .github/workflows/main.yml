@@ -2,16 +2,18 @@ name: Snyk Scan
 
 on:
   push:
+    branches: ["**"]  # all branches
   pull_request:
+    branches: ["**"]
   workflow_dispatch:
 
 jobs:
-  snyk:
+  snyk-scan:
     name: Snyk Scan for Node.js and Java
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write  # for SARIF upload
+      security-events: write  # Required for SARIF upload
 
     steps:
       - name: Checkout code
@@ -34,49 +36,56 @@ jobs:
           chmod +x snyk
           sudo mv snyk /usr/local/bin/snyk
 
-      - name: Authenticate Snyk CLI
+      - name: Authenticate with Snyk
         env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: snyk auth "$SNYK_TOKEN"
 
-      - name: Run Snyk test for package.json (Node.js)
+      - name: Run Snyk Test for Node.js (package.json)
         if: always()
+        env:
+          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
         run: |
           if [ -f "package.json" ]; then
-            echo "Detected package.json, running Snyk test for Node.js..."
-            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif || exit 1
+            echo "Running Snyk test for Node.js..."
+            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif || export NODE_FAILED=true
             snyk monitor --file=package.json || true
-          else
-            echo "No package.json found, skipping Node.js scan."
           fi
 
-      - name: Run Snyk test for pom.xml (Java)
+      - name: Run Snyk Test for Java (pom.xml)
         if: always()
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
           if [ -f "pom.xml" ]; then
-            echo "Detected pom.xml, running Snyk test for Java..."
-            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif || exit 1
+            echo "Running Snyk test for Java..."
+            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif || export JAVA_FAILED=true
             snyk monitor --file=pom.xml || true
-          else
-            echo "No pom.xml found, skipping Java scan."
           fi
 
-      - name: Combine SARIF results
+      - name: Combine SARIF Files
         if: always()
         run: |
-          files=()
-          [ -f snyk-node.sarif ] && files+=("snyk-node.sarif")
-          [ -f snyk-java.sarif ] && files+=("snyk-java.sarif")
+          FILES=()
+          [ -f snyk-node.sarif ] && FILES+=("snyk-node.sarif")
+          [ -f snyk-java.sarif ] && FILES+=("snyk-java.sarif")
 
-          if [ "${#files[@]}" -eq 1 ]; then
-            cp "${files[0]}" combined.sarif
-          elif [ "${#files[@]}" -gt 1 ]; then
-            jq -s '{ version: "2.1.0", runs: map(.runs[]) }' "${files[@]}" > combined.sarif
+          if [ ${#FILES[@]} -eq 1 ]; then
+            cp "${FILES[0]}" combined.sarif
+          elif [ ${#FILES[@]} -gt 1 ]; then
+            jq -s '{ version: "2.1.0", runs: map(.runs[]) }' "${FILES[@]}" > combined.sarif
           fi
 
       - name: Upload SARIF to GitHub Code Scanning
-        if: always() && (hashFiles('combined.sarif') != '')
+        if: always() && hashFiles('combined.sarif') != ''
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: combined.sarif
 
+      - name: Fail job if high/critical issues were found
+        if: always()
+        run: |
+          if [ "$NODE_FAILED" = "true" ] || [ "$JAVA_FAILED" = "true" ]; then
+            echo "High or critical vulnerabilities detected. Failing the job."
+            exit 1
+          fi
