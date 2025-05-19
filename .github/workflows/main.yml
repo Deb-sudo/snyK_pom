@@ -2,7 +2,7 @@ name: Snyk Scan
 
 on:
   push:
-    branches: ["**"]  # all branches
+    branches: ["**"]
   pull_request:
     branches: ["**"]
   workflow_dispatch:
@@ -48,8 +48,8 @@ jobs:
         run: |
           if [ -f "package.json" ]; then
             echo "Running Snyk test for Node.js..."
-            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif || export NODE_FAILED=true
-            snyk monitor --file=package.json || true
+            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif
+            snyk monitor --file=package.json
           fi
 
       - name: Run Snyk Test for Java (pom.xml)
@@ -59,8 +59,8 @@ jobs:
         run: |
           if [ -f "pom.xml" ]; then
             echo "Running Snyk test for Java..."
-            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif || export JAVA_FAILED=true
-            snyk monitor --file=pom.xml || true
+            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif
+            snyk monitor --file=pom.xml
           fi
 
       - name: Combine SARIF Files
@@ -82,10 +82,4 @@ jobs:
         with:
           sarif_file: combined.sarif
 
-      - name: Fail job if high/critical issues were found
-        if: always()
-        run: |
-          if [ "$NODE_FAILED" = "true" ] || [ "$JAVA_FAILED" = "true" ]; then
-            echo "High or critical vulnerabilities detected. Failing the job."
-            exit 1
-          fi
+
