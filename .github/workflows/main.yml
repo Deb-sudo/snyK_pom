@@ -1,4 +1,4 @@
-name: Snyk Scan
+name: Snyk Java Scan
 
 on:
   push:
@@ -8,21 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  snyk-scan:
-    name: Snyk Scan for Node.js and Java
+  snyk-java:
+    name: Snyk Scan for pom.xml
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write  # Required for SARIF upload
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
 
       - name: Set up Java
         uses: actions/setup-java@v3
@@ -30,56 +22,21 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Snyk CLI
-        run: |
-          curl -sL https://github.com/snyk/cli/releases/latest/download/snyk-linux -o snyk
-          chmod +x snyk
-          sudo mv snyk /usr/local/bin/snyk
-
-      - name: Authenticate with Snyk
-        env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
-        run: snyk auth "$SNYK_TOKEN"
-
-      - name: Run Snyk Test for Node.js (package.json)
-        if: always()
+      - name: Run Snyk test and upload SARIF
+        if: hashFiles('pom.xml') != ''
         env:
           SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
         run: |
-          if [ -f "package.json" ]; then
-            echo "Running Snyk test for Node.js..."
-            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif
-            snyk monitor --file=package.json
-          fi
+          curl -sL https://snyk.io/install | bash
+          snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif
+          snyk monitor --file=pom.xml
 
-      - name: Run Snyk Test for Java (pom.xml)
-        if: always()
-        env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
-        run: |
-          if [ -f "pom.xml" ]; then
-            echo "Running Snyk test for Java..."
-            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif
-            snyk monitor --file=pom.xml
-          fi
-
-      - name: Combine SARIF Files
-        if: always()
-        run: |
-          FILES=()
-          [ -f snyk-node.sarif ] && FILES+=("snyk-node.sarif")
-          [ -f snyk-java.sarif ] && FILES+=("snyk-java.sarif")
-
-          if [ ${#FILES[@]} -eq 1 ]; then
-            cp "${FILES[0]}" combined.sarif
-          elif [ ${#FILES[@]} -gt 1 ]; then
-            jq -s '{ version: "2.1.0", runs: map(.runs[]) }' "${FILES[@]}" > combined.sarif
-          fi
-
-      - name: Upload SARIF to GitHub Code Scanning
-        if: always() && hashFiles('combined.sarif') != ''
+      - name: Upload SARIF for Java
+        if: hashFiles('pom.xml') != ''
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: combined.sarif
+          sarif_file: snyk-java.sarif
+
+
 
 
