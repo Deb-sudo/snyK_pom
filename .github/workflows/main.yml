@@ -38,7 +38,7 @@ jobs:
 
       - name: Authenticate with Snyk
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
         run: snyk auth "$SNYK_TOKEN"
 
       - name: Run Snyk Test for Node.js (package.json)
@@ -55,7 +55,7 @@ jobs:
       - name: Run Snyk Test for Java (pom.xml)
         if: always()
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
         run: |
           if [ -f "pom.xml" ]; then
             echo "Running Snyk test for Java..."
