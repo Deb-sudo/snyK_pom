@@ -1,0 +1,16 @@
+{
+  "name": "vulnerable-node-app",
+  "version": "1.0.0",
+  "description": "Deliberately vulnerable Node.js app",
+  "main": "index.js",
+  "dependencies": {
+    "express": "4.16.0",         // Prototype pollution & DoS
+    "lodash": "4.17.11",         // Prototype pollution (CVE-2019-10744)
+    "marked": "0.3.6"            // XSS vulnerability (CVE-2017-17461)
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "insecure",
+  "license": "ISC"
+}
