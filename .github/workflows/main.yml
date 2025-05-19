@@ -33,11 +33,12 @@ jobs:
       - name: Authenticate with Snyk
         run: snyk auth ${{ secrets.SNYKTOKEN }}
 
-      - name: Run Snyk test and generate SARIF
+      - name: Run Snyk test and capture result
+        id: snyk-test
         run: |
           snyk test --file=pom.xml \
                     --severity-threshold=high \
-                    --sarif-file-output=snyk-java.sarif
+                    --sarif-file-output=snyk-java.sarif || echo "SNYK_TEST_FAILED=true" >> $GITHUB_ENV
 
       - name: Monitor project in Snyk
         run: snyk monitor --file=pom.xml
@@ -46,5 +47,12 @@ jobs:
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: snyk-java.sarif
+
+      - name: Fail job if Snyk test failed
+        if: env.SNYK_TEST_FAILED == 'true'
+        run: |
+          echo "High or critical vulnerabilities detected. Failing the build."
+          exit 1
+
 
 
