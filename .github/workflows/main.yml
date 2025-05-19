@@ -1,4 +1,4 @@
-name: Snyk Vulnerability Scan
+name: Snyk Scan
 
 on:
   push:
@@ -6,23 +6,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  snyk-scan:
+  snyk:
+    name: Snyk Scan for Node.js and Java
     runs-on: ubuntu-latest
-    name: Scan with Snyk
     permissions:
       contents: read
-      security-events: write  # Required for SARIF upload
-    env:
-      SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+      security-events: write  # for SARIF upload
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: 18
 
       - name: Set up Java
         uses: actions/setup-java@v3
@@ -32,37 +30,53 @@ jobs:
 
       - name: Install Snyk CLI
         run: |
-          curl -sL https://github.com/snyk/snyk/releases/latest/download/snyk-linux -o snyk
+          curl -sL https://github.com/snyk/cli/releases/latest/download/snyk-linux -o snyk
           chmod +x snyk
           sudo mv snyk /usr/local/bin/snyk
 
-      # ---- Scan package.json ----
-      - name: Snyk Test - Node.js
-        if: exists('package.json')
-        run: |
-          snyk test --file=package.json --severity-threshold=high
+      - name: Authenticate Snyk CLI
+        env:
+          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+        run: snyk auth "$SNYK_TOKEN"
 
-      # ---- Scan pom.xml ----
-      - name: Snyk Test - Java (Maven)
-        if: exists('pom.xml')
+      - name: Run Snyk test for package.json (Node.js)
+        if: always()
         run: |
-          snyk test --file=pom.xml --severity-threshold=high --all-projects
+          if [ -f "package.json" ]; then
+            echo "Detected package.json, running Snyk test for Node.js..."
+            snyk test --file=package.json --severity-threshold=high --sarif-file-output=snyk-node.sarif || exit 1
+            snyk monitor --file=package.json || true
+          else
+            echo "No package.json found, skipping Node.js scan."
+          fi
 
-      # ---- SARIF Report Generation ----
-      - name: Snyk Code to SARIF
+      - name: Run Snyk test for pom.xml (Java)
+        if: always()
         run: |
-          snyk code test --sarif > snyk.sarif || true  # continue if scan finds issues
+          if [ -f "pom.xml" ]; then
+            echo "Detected pom.xml, running Snyk test for Java..."
+            snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif || exit 1
+            snyk monitor --file=pom.xml || true
+          else
+            echo "No pom.xml found, skipping Java scan."
+          fi
 
-      - name: Upload SARIF to GitHub
+      - name: Combine SARIF results
+        if: always()
+        run: |
+          files=()
+          [ -f snyk-node.sarif ] && files+=("snyk-node.sarif")
+          [ -f snyk-java.sarif ] && files+=("snyk-java.sarif")
+
+          if [ "${#files[@]}" -eq 1 ]; then
+            cp "${files[0]}" combined.sarif
+          elif [ "${#files[@]}" -gt 1 ]; then
+            jq -s '{ version: "2.1.0", runs: map(.runs[]) }' "${files[@]}" > combined.sarif
+          fi
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && (hashFiles('combined.sarif') != '')
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: snyk.sarif
+          sarif_file: combined.sarif
 
-      # ---- Push results to Snyk Dashboard ----
-      - name: Snyk Monitor - Node.js
-        if: exists('package.json')
-        run: snyk monitor --file=package.json
-
-      - name: Snyk Monitor - Java (Maven)
-        if: exists('pom.xml')
-        run: snyk monitor --file=pom.xml --all-projects
