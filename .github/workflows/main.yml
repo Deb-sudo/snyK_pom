@@ -2,15 +2,17 @@ name: Snyk Java Scan
 
 on:
   push:
-    branches: ["**"]
+    branches: ['**']
   pull_request:
-    branches: ["**"]
+    branches: ['**']
   workflow_dispatch:
 
 jobs:
   snyk-java:
-    name: Snyk Scan for pom.xml
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Needed for SARIF upload
 
     steps:
       - name: Checkout code
@@ -22,21 +24,27 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Run Snyk test and upload SARIF
-        if: hashFiles('pom.xml') != ''
-        env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+      - name: Install Snyk CLI
         run: |
-          curl -sL https://snyk.io/install | bash
-          snyk test --file=pom.xml --severity-threshold=high --sarif-file-output=snyk-java.sarif
-          snyk monitor --file=pom.xml
+          curl -Lo snyk https://github.com/snyk/snyk/releases/latest/download/snyk-linux
+          chmod +x snyk
+          sudo mv snyk /usr/local/bin/snyk
 
-      - name: Upload SARIF for Java
-        if: hashFiles('pom.xml') != ''
+      - name: Authenticate with Snyk
+        run: snyk auth ${{ secrets.SNYKTOKEN }}
+
+      - name: Run Snyk test and generate SARIF
+        run: |
+          snyk test --file=pom.xml \
+                    --severity-threshold=high \
+                    --sarif-file-output=snyk-java.sarif
+
+      - name: Monitor project in Snyk
+        run: snyk monitor --file=pom.xml
+
+      - name: Upload SARIF report
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: snyk-java.sarif
-
-
 
 
